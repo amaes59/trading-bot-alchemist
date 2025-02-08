@@ -10,6 +10,6 @@ export interface StockData {
   ma7?: number;    // Moving average 7 days
   ma20?: number;   // Moving average 20 days
   ma50?: number;   // Moving average 50 days
-  // Add more technical indicators as needed
+  normalized_close?: number;  // Normalized close price (0-1)
+  next_close?: number;       // Next day's closing price
 }
-

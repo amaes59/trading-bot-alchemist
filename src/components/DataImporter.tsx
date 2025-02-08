@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -11,6 +12,21 @@ export function DataImporter() {
   const [selectedIsin, setSelectedIsin] = useState<string>("");
   const [availableIsins, setAvailableIsins] = useState<string[]>([]);
 
+  const normalizeData = (data: StockData[]): StockData[] => {
+    // Find min and max close prices for normalization
+    const closes = data.map(d => d.close);
+    const minClose = Math.min(...closes);
+    const maxClose = Math.max(...closes);
+    const range = maxClose - minClose;
+
+    // Add normalized close and next day's close
+    return data.map((record, index) => ({
+      ...record,
+      normalized_close: (record.close - minClose) / range,
+      next_close: index < data.length - 1 ? data[index + 1].close : undefined
+    }));
+  };
+
   const calculateTechnicalIndicators = (stockData: StockData[]): StockData[] => {
     // Sort data by date to ensure correct calculations
     const sortedData = [...stockData].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -19,7 +35,6 @@ export function DataImporter() {
     return sortedData.map((record, index) => {
       const previousData = sortedData.slice(Math.max(0, index - 49), index + 1);
       
-      // Calculate moving averages only if we have enough data points
       const ma7 = index >= 6 ? 
         previousData.slice(-7).reduce((sum, d) => sum + d.close, 0) / 7 : 
         undefined;
@@ -38,6 +53,48 @@ export function DataImporter() {
         ma20,
         ma50
       };
+    });
+  };
+
+  const prepareDataForExport = (isin: string): string => {
+    if (!allData[isin]) return "";
+
+    const data = allData[isin];
+    const headers = ["date", "close", "normalized_close", "ma7", "ma20", "ma50", "next_close"];
+    
+    const csvContent = [
+      headers.join(","),
+      ...data.map(row => [
+        row.date.toISOString().split('T')[0],
+        row.close,
+        row.normalized_close?.toFixed(6) ?? "",
+        row.ma7?.toFixed(2) ?? "",
+        row.ma20?.toFixed(2) ?? "",
+        row.ma50?.toFixed(2) ?? "",
+        row.next_close?.toFixed(2) ?? ""
+      ].join(","))
+    ].join("\n");
+
+    return csvContent;
+  };
+
+  const handleExportData = () => {
+    if (!selectedIsin) return;
+
+    const csvContent = prepareDataForExport(selectedIsin);
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedIsin}_prepared_data.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export réussi",
+      description: "Données préparées pour LSTM exportées"
     });
   };
 
@@ -81,9 +138,10 @@ export function DataImporter() {
       groupedData[record.isin].push(record);
     });
 
-    // Calculate technical indicators for each ISIN
+    // Calculate technical indicators and normalize data for each ISIN
     Object.keys(groupedData).forEach(isin => {
       groupedData[isin] = calculateTechnicalIndicators(groupedData[isin]);
+      groupedData[isin] = normalizeData(groupedData[isin]);
     });
 
     return groupedData;
@@ -129,7 +187,7 @@ export function DataImporter() {
               Format: ISIN;Date;Open;High;Low;Close;Volume
             </p>
           </div>
-          <div>
+          <div className="flex gap-2">
             <input
               type="file"
               accept=".csv"
@@ -142,6 +200,11 @@ export function DataImporter() {
                 <span>Importer CSV</span>
               </Button>
             </label>
+            {selectedIsin && (
+              <Button onClick={handleExportData}>
+                Exporter pour LSTM
+              </Button>
+            )}
           </div>
         </div>
 
@@ -178,6 +241,8 @@ export function DataImporter() {
                   <TableHead className="text-right">MA7</TableHead>
                   <TableHead className="text-right">MA20</TableHead>
                   <TableHead className="text-right">MA50</TableHead>
+                  <TableHead className="text-right">Norm. Close</TableHead>
+                  <TableHead className="text-right">Next Close</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,6 +258,8 @@ export function DataImporter() {
                     <TableCell className="text-right">{row.ma7?.toFixed(2) ?? '-'}</TableCell>
                     <TableCell className="text-right">{row.ma20?.toFixed(2) ?? '-'}</TableCell>
                     <TableCell className="text-right">{row.ma50?.toFixed(2) ?? '-'}</TableCell>
+                    <TableCell className="text-right">{row.normalized_close?.toFixed(4) ?? '-'}</TableCell>
+                    <TableCell className="text-right">{row.next_close?.toFixed(2) ?? '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
