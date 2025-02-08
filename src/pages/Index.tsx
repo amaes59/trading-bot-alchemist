@@ -2,6 +2,7 @@
 import { TradingChart } from "@/components/TradingChart";
 import { ActivePositions } from "@/components/ActivePositions";
 import { StrategySelector } from "@/components/StrategySelector";
+import { DataImporter } from "@/components/DataImporter";
 
 const Index = () => {
   return (
@@ -13,6 +14,8 @@ const Index = () => {
             Suivez et configurez votre robot de trading automatisé
           </p>
         </div>
+        
+        <DataImporter />
         
         <div className="grid gap-8 md:grid-cols-2">
           <TradingChart />
