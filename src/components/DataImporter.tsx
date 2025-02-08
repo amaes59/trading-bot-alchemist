@@ -1,13 +1,15 @@
-
 import { useState } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { toast } from "./ui/use-toast";
 import { StockData } from "@/types/stockData";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 export function DataImporter() {
-  const [data, setData] = useState<StockData[]>([]);
+  const [allData, setAllData] = useState<{ [key: string]: StockData[] }>({});
+  const [selectedIsin, setSelectedIsin] = useState<string>("");
+  const [availableIsins, setAvailableIsins] = useState<string[]>([]);
 
   const calculateTechnicalIndicators = (stockData: StockData[]): StockData[] => {
     // Sort data by date to ensure correct calculations
@@ -39,8 +41,8 @@ export function DataImporter() {
     });
   };
 
-  const parseCSV = (text: string): StockData[] => {
-    return text.split('\n')
+  const parseCSV = (text: string): { [key: string]: StockData[] } => {
+    const allRecords = text.split('\n')
       .filter(line => line.trim() !== '')
       .map(line => {
         const [isin, dateStr, openStr, highStr, lowStr, closeStr, volumeStr] = line.split(';');
@@ -69,6 +71,22 @@ export function DataImporter() {
 
         return stockData;
       });
+
+    // Group data by ISIN
+    const groupedData: { [key: string]: StockData[] } = {};
+    allRecords.forEach(record => {
+      if (!groupedData[record.isin]) {
+        groupedData[record.isin] = [];
+      }
+      groupedData[record.isin].push(record);
+    });
+
+    // Calculate technical indicators for each ISIN
+    Object.keys(groupedData).forEach(isin => {
+      groupedData[isin] = calculateTechnicalIndicators(groupedData[isin]);
+    });
+
+    return groupedData;
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,12 +97,16 @@ export function DataImporter() {
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const parsedData = parseCSV(text);
-        const dataWithIndicators = calculateTechnicalIndicators(parsedData);
-        setData(dataWithIndicators);
+        const groupedData = parseCSV(text);
+        const isins = Object.keys(groupedData);
+        
+        setAllData(groupedData);
+        setAvailableIsins(isins);
+        setSelectedIsin(isins[0]); // Select first ISIN by default
+        
         toast({
           title: "Import réussi",
-          description: `${dataWithIndicators.length} lignes importées avec indicateurs techniques`
+          description: `${isins.length} actions importées avec leurs indicateurs techniques`
         });
       } catch (error) {
         toast({
@@ -123,7 +145,25 @@ export function DataImporter() {
           </div>
         </div>
 
-        {data.length > 0 && (
+        {availableIsins.length > 0 && (
+          <Select
+            value={selectedIsin}
+            onValueChange={setSelectedIsin}
+          >
+            <SelectTrigger className="w-[280px]">
+              <SelectValue placeholder="Sélectionnez une action" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableIsins.map(isin => (
+                <SelectItem key={isin} value={isin}>
+                  {isin}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {selectedIsin && allData[selectedIsin]?.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -141,7 +181,7 @@ export function DataImporter() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.slice(0, 10).map((row, index) => (
+                {allData[selectedIsin].slice(0, 10).map((row, index) => (
                   <TableRow key={`${row.isin}-${index}`}>
                     <TableCell>{row.isin}</TableCell>
                     <TableCell>{row.date.toLocaleDateString()}</TableCell>
